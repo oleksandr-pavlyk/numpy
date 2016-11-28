@@ -11,17 +11,19 @@ if [ -r /usr/lib/libeatmydata/libeatmydata.so ]; then
   export LD_PRELOAD=/usr/lib/libeatmydata/libeatmydata.so
 fi
 
+source builds/venv/bin/activate
+
 # travis venv tests override python
 PYTHON=${PYTHON:-python}
 PIP=${PIP:-pip}
 
-# explicit python version needed here
-if [ -n "$USE_DEBUG" ]; then
-  PYTHON="python3-dbg"
-fi
-
 if [ -n "$PYTHON_OO" ]; then
   PYTHON="${PYTHON} -OO"
+fi
+
+
+if [ -n "$PY3_COMPATIBILITY_CHECK" ]; then
+  PYTHON="${PYTHON} -3"
 fi
 
 # make some warnings fatal, mostly to match windows compilers

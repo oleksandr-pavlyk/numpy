@@ -1,6 +1,7 @@
 from __future__ import division, absolute_import, print_function
 
 import sys
+import warnings
 import itertools
 import operator
 
@@ -83,7 +84,7 @@ class TestBaseMath(TestCase):
                 assert_almost_equal(np.square(inp2),
                                     np.multiply(inp2, inp2),  err_msg=msg)
                 # skip true divide for ints
-                if dt != np.int32 or sys.version_info.major < 3:
+                if dt != np.int32 or (sys.version_info.major < 3 and not sys.py3kwarning):
                     assert_almost_equal(np.reciprocal(inp2),
                                         np.divide(1, inp2),  err_msg=msg)
 
@@ -124,23 +125,41 @@ class TestPower(TestCase):
             else:
                 assert_almost_equal(b, 6765201, err_msg=msg)
 
-    def test_negative_power(self):
-        typelist = [np.int8, np.int16, np.int32, np.int64]
-        for t in typelist:
-            a = t(2)
-            b = t(-4)
-            result = a**b
-            msg = ("error with %r:"
-                   "got %r, expected %r") % (t, result, 0.0625)
-            assert_(result == 0.0625, msg)
+    def test_integers_to_negative_integer_power(self):
+        # Note that the combination of uint64 with a signed integer
+        # has common type np.float. The other combinations should all
+        # raise a ValueError for integer ** negative integer.
+        exp = [np.array(-1, dt)[()] for dt in 'bhilq']
 
-            c = t(4)
-            d = t(-15)
-            result = c**d
-            expected = 4.0**-15.0
-            msg = ("error with %r:"
-                   "got %r, expected %r") % (t, result, expected)
-            assert_almost_equal(result, expected, err_msg=msg)
+        # 1 ** -1 possible special case
+        base = [np.array(1, dt)[()] for dt in 'bhilqBHILQ']
+        for i1, i2 in itertools.product(base, exp):
+            if i1.dtype.name != 'uint64':
+                assert_raises(ValueError, operator.pow, i1, i2)
+            else:
+                res = operator.pow(i1, i2)
+                assert_(res.dtype.type is np.float64)
+                assert_almost_equal(res, 1.)
+
+        # -1 ** -1 possible special case
+        base = [np.array(-1, dt)[()] for dt in 'bhilq']
+        for i1, i2 in itertools.product(base, exp):
+            if i1.dtype.name != 'uint64':
+                assert_raises(ValueError, operator.pow, i1, i2)
+            else:
+                res = operator.pow(i1, i2)
+                assert_(res.dtype.type is np.float64)
+                assert_almost_equal(res, -1.)
+
+        # 2 ** -1 perhaps generic
+        base = [np.array(2, dt)[()] for dt in 'bhilqBHILQ']
+        for i1, i2 in itertools.product(base, exp):
+            if i1.dtype.name != 'uint64':
+                assert_raises(ValueError, operator.pow, i1, i2)
+            else:
+                res = operator.pow(i1, i2)
+                assert_(res.dtype.type is np.float64)
+                assert_almost_equal(res, .5)
 
     def test_mixed_types(self):
         typelist = [np.int8, np.int16, np.float16,
@@ -412,6 +431,27 @@ class TestConversion(TestCase):
                 assert_(np.array(-1, dtype=dt1)[()] == np.array(-1, dtype=dt2)[()],
                         "type %s and %s failed" % (dt1, dt2))
 
+    def test_scalar_comparison_to_none(self):
+        # Scalars should just return False and not give a warnings.
+        # The comparisons are flagged by pep8, ignore that.
+        with warnings.catch_warnings(record=True) as w:
+            warnings.filterwarnings('always', '', FutureWarning)
+            assert_(not np.float32(1) == None)
+            assert_(not np.str_('test') == None)
+            # This is dubious (see below):
+            assert_(not np.datetime64('NaT') == None)
+
+            assert_(np.float32(1) != None)
+            assert_(np.str_('test') != None)
+            # This is dubious (see below):
+            assert_(np.datetime64('NaT') != None)
+        assert_(len(w) == 0)
+
+        # For documentation purposes, this is why the datetime is dubious.
+        # At the time of deprecation this was no behaviour change, but
+        # it has to be considered when the deprecations are done.
+        assert_(np.equal(np.datetime64('NaT'), None))
+
 
 #class TestRepr(TestCase):
 #    def test_repr(self):
@@ -505,6 +545,34 @@ class TestMultiply(TestCase):
             assert_array_equal(np.float32(3.) * arr_like, np.full(3, 3.))
             assert_array_equal(arr_like * np.int_(3), np.full(3, 3))
             assert_array_equal(np.int_(3) * arr_like, np.full(3, 3))
+
+
+class TestNegative(TestCase):
+    def test_exceptions(self):
+        a = np.ones((), dtype=np.bool_)[()]
+        assert_raises(TypeError, operator.neg, a)
+
+    def test_result(self):
+        types = np.typecodes['AllInteger'] + np.typecodes['AllFloat']
+        with suppress_warnings() as sup:
+            sup.filter(RuntimeWarning)
+            for dt in types:
+                a = np.ones((), dtype=dt)[()]
+                assert_equal(operator.neg(a) + a, 0)
+
+
+class TestSubtract(TestCase):
+    def test_exceptions(self):
+        a = np.ones((), dtype=np.bool_)[()]
+        assert_raises(TypeError, operator.sub, a, a)
+
+    def test_result(self):
+        types = np.typecodes['AllInteger'] + np.typecodes['AllFloat']
+        with suppress_warnings() as sup:
+            sup.filter(RuntimeWarning)
+            for dt in types:
+                a = np.ones((), dtype=dt)[()]
+                assert_equal(operator.sub(a, a), 0)
 
 
 class TestAbs(TestCase):

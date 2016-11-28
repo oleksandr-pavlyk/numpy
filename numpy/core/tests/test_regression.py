@@ -2118,7 +2118,9 @@ class TestRegression(TestCase):
         for f in [op.lt, op.le, op.gt, op.ge]:
             if sys.version_info[0] >= 3:
                 assert_raises(TypeError, f, lhs, rhs)
-            else:
+            elif not sys.py3kwarning:
+                # With -3 switch in python 2, DeprecationWarning is raised
+                # which we are not interested in
                 f(lhs, rhs)
         assert_(not op.eq(lhs, rhs))
         assert_(op.ne(lhs, rhs))
@@ -2211,6 +2213,27 @@ class TestRegression(TestCase):
             # the result overflows to a total size of 10.
             new_shape = (2, 7, 7, 43826197)
         assert_raises(ValueError, a.reshape, new_shape)
+
+    def test_invalid_structured_dtypes(self):
+        # gh-2865
+        # mapping python objects to other dtypes
+        assert_raises(ValueError, np.dtype, ('O', [('name', 'i8')]))
+        assert_raises(ValueError, np.dtype, ('i8', [('name', 'O')]))
+        assert_raises(ValueError, np.dtype,
+                      ('i8', [('name', [('name', 'O')])]))
+        assert_raises(ValueError, np.dtype, ([('a', 'i4'), ('b', 'i4')], 'O'))
+        assert_raises(ValueError, np.dtype, ('i8', 'O'))
+        # wrong number/type of tuple elements in dict
+        assert_raises(ValueError, np.dtype,
+                      ('i', {'name': ('i', 0, 'title', 'oops')}))
+        assert_raises(ValueError, np.dtype,
+                      ('i', {'name': ('i', 'wrongtype', 'title')}))
+        # disallowed as of 1.13
+        assert_raises(ValueError, np.dtype,
+                      ([('a', 'O'), ('b', 'O')], [('c', 'O'), ('d', 'O')]))
+        # allowed as a special case due to existing use, see gh-2798
+        a = np.ones(1, dtype=('O', [('name', 'O')]))
+        assert_equal(a[0], 1)
 
 
 if __name__ == "__main__":

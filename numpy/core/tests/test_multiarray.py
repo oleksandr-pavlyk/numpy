@@ -1819,6 +1819,24 @@ class TestMethods(TestCase):
         assert_raises(ValueError, d_obj.partition, 10)
         assert_raises(ValueError, d_obj.partition, -11)
 
+    def test_argpartition_integer(self):
+        # Test non-integer values in kth raise an error/
+        d = np.arange(10)
+        assert_raises(TypeError, d.argpartition, 9.)
+        # Test also for generic type argpartition, which uses sorting
+        # and used to not bound check kth
+        d_obj = np.arange(10, dtype=object)
+        assert_raises(TypeError, d_obj.argpartition, 9.)
+
+    def test_partition_integer(self):
+        # Test out of range values in kth raise an error, gh-5469
+        d = np.arange(10)
+        assert_raises(TypeError, d.partition, 9.)
+        # Test also for generic type partition, which uses sorting
+        # and used to not bound check kth
+        d_obj = np.arange(10, dtype=object)
+        assert_raises(TypeError, d_obj.partition, 9.)
+
     def test_partition_empty_array(self):
         # check axis handling for multidimensional empty arrays
         a = np.array([])
@@ -4530,6 +4548,11 @@ class TestStats(TestCase):
                 res = _mean(mat, axis=axis) * np.prod(mat.shape)
                 assert_almost_equal(res, tgt)
 
+    def test_mean_float16(self):
+        # This fail if the sum inside mean is done in float16 instead
+        # of float32.
+        assert _mean(np.ones(100000, dtype='float16')) == 1
+
     def test_var_values(self):
         for mat in [self.rmat, self.cmat, self.omat]:
             for axis in [0, 1, None]:
@@ -6484,7 +6507,9 @@ class TestArrayPriority(TestCase):
         op.ge, op.lt, op.le, op.ne, op.eq
         ]
 
-    if sys.version_info[0] < 3:
+    # See #7949. Dont use "/" operator With -3 switch, since python reports it
+    # as a DeprecationWarning
+    if sys.version_info[0] < 3 and not sys.py3kwarning:
         binary_ops.append(op.div)
 
     class Foo(np.ndarray):

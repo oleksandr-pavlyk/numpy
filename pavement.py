@@ -99,10 +99,10 @@ finally:
 #-----------------------------------
 
 # Source of the release notes
-RELEASE_NOTES = 'doc/release/1.12.0-notes.rst'
+RELEASE_NOTES = 'doc/release/1.13.0-notes.rst'
 
 # Start/end of the log (from git)
-LOG_START = 'maintenance/1.11.x'
+LOG_START = 'maintenance/1.12.x'
 LOG_END = 'master'
 
 
@@ -150,10 +150,7 @@ SITECFG = {"sse2" : SSE2_CFG, "sse3" : SSE3_CFG, "nosse" : NOSSE_CFG}
 if sys.platform =="darwin":
     WINDOWS_PYTHON = {
         "3.4": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python34/python.exe"],
-        "3.3": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python33/python.exe"],
-        "3.2": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python32/python.exe"],
         "2.7": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python27/python.exe"],
-        "2.6": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python26/python.exe"],
     }
     WINDOWS_ENV = os.environ
     WINDOWS_ENV["DYLD_FALLBACK_LIBRARY_PATH"] = "/usr/X11/lib:/usr/lib"
@@ -161,10 +158,7 @@ if sys.platform =="darwin":
 elif sys.platform == "win32":
     WINDOWS_PYTHON = {
         "3.4": ["C:\Python34\python.exe"],
-        "3.3": ["C:\Python33\python.exe"],
-        "3.2": ["C:\Python32\python.exe"],
         "2.7": ["C:\Python27\python.exe"],
-        "2.6": ["C:\Python26\python.exe"],
     }
     # XXX: find out which env variable is necessary to avoid the pb with python
     # 2.6 and random module when importing tempfile
@@ -173,10 +167,7 @@ elif sys.platform == "win32":
 else:
     WINDOWS_PYTHON = {
         "3.4": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python34/python.exe"],
-        "3.3": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python33/python.exe"],
-        "3.2": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python32/python.exe"],
         "2.7": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python27/python.exe"],
-        "2.6": ["wine", os.environ['HOME'] + "/.wine/drive_c/Python26/python.exe"],
     }
     WINDOWS_ENV = os.environ
     MAKENSIS = ["wine", "makensis"]
@@ -597,9 +588,12 @@ def write_release_task(options, filename='NOTES.txt'):
     target = paver.path.path(filename)
     if target.exists():
         target.remove()
-    source.copy(target)
-    ftarget = open(str(target), 'a')
-    ftarget.writelines("""
+
+    tmp_target = paver.path.path(filename + '.tmp')
+    source.copy(tmp_target)
+
+    with open(str(tmp_target), 'a') as ftarget:
+        ftarget.writelines("""
 Checksums
 =========
 
@@ -607,13 +601,23 @@ MD5
 ~~~
 
 """)
-    ftarget.writelines(['%s\n' % c for c in compute_md5(idirs)])
-    ftarget.writelines("""
+        ftarget.writelines(['%s\n' % c for c in compute_md5(idirs)])
+        ftarget.writelines("""
 SHA256
 ~~~~~~
 
 """)
-    ftarget.writelines(['%s\n' % c for c in compute_sha256(idirs)])
+        ftarget.writelines(['%s\n' % c for c in compute_sha256(idirs)])
+
+    # Sign release
+    cmd = ['gpg', '--clearsign', '--armor']
+    if hasattr(options, 'gpg_key'):
+        cmd += ['--default-key', options.gpg_key]
+    cmd += ['--output', str(target), str(tmp_target)]
+    subprocess.check_call(cmd)
+    print("signed %s" % (target,))
+    tmp_target.remove()
+
 
 def write_log_task(options, filename='Changelog'):
     st = subprocess.Popen(
@@ -626,16 +630,19 @@ def write_log_task(options, filename='Changelog'):
     a.writelines(out)
     a.close()
 
+
 @task
 def write_release(options):
     write_release_task(options)
+
 
 @task
 def write_log(options):
     write_log_task(options)
 
+
 @task
 def write_release_and_log(options):
     rdir = options.installers.releasedir
-    write_release_task(options, os.path.join(rdir, 'NOTES.txt'))
+    write_release_task(options, os.path.join(rdir, 'README'))
     write_log_task(options, os.path.join(rdir, 'Changelog'))

@@ -1092,19 +1092,7 @@ def average(a, axis=None, weights=None, returned=False):
     TypeError: Axis must be specified when shapes of a and weights differ.
 
     """
-    # 3/19/2016 1.12.0:
-    # replace the next few lines with "a = np.asanyarray(a)"
-    if (type(a) not in (np.ndarray, np.matrix) and
-            issubclass(type(a), np.ndarray)):
-        warnings.warn("np.average currently does not preserve subclasses, but "
-                      "will do so in the future to match the behavior of most "
-                      "other numpy functions such as np.mean. In particular, "
-                      "this means calls which returned a scalar may return a "
-                      "0-d subclass object instead.",
-                      FutureWarning, stacklevel=2)
-
-    if not isinstance(a, np.matrix):
-        a = np.asarray(a)
+    a = np.asanyarray(a)
 
     if weights is None:
         avg = a.mean(axis)
@@ -1225,9 +1213,9 @@ def piecewise(x, condlist, funclist, *args, **kw):
 
     Parameters
     ----------
-    x : ndarray
+    x : ndarray or scalar
         The input domain.
-    condlist : list of bool arrays
+    condlist : list of bool arrays or bool scalars
         Each boolean array corresponds to a function in `funclist`.  Wherever
         `condlist[i]` is True, `funclist[i](x)` is used as the output value.
 
@@ -1296,12 +1284,21 @@ def piecewise(x, condlist, funclist, *args, **kw):
     >>> np.piecewise(x, [x < 0, x >= 0], [lambda x: -x, lambda x: x])
     array([ 2.5,  1.5,  0.5,  0.5,  1.5,  2.5])
 
+    Apply the same function to a scalar value.
+
+    >>> y = -2
+    >>> np.piecewise(y, [y < 0, y >= 0], [lambda x: -x, lambda x: x])
+    array(2)
+
     """
     x = asanyarray(x)
     n2 = len(funclist)
     if (isscalar(condlist) or not (isinstance(condlist[0], list) or
                                    isinstance(condlist[0], ndarray))):
-        condlist = [condlist]
+        if not isscalar(condlist) and x.size == 1 and x.ndim == 0:
+            condlist = [[c] for c in condlist]
+        else:
+            condlist = [condlist]
     condlist = array(condlist, dtype=bool)
     n = len(condlist)
     # This is a hack to work around problems with NumPy's
@@ -1311,8 +1308,6 @@ def piecewise(x, condlist, funclist, *args, **kw):
     if x.ndim == 0:
         x = x[None]
         zerod = True
-        if condlist.shape[-1] != 1:
-            condlist = condlist.T
     if n == n2 - 1:  # compute the "otherwise" condition.
         totlist = np.logical_or.reduce(condlist, axis=0)
         # Only able to stack vertically if the array is 1d or less
@@ -4530,18 +4525,14 @@ def meshgrid(*xi, **kwargs):
         output[1].shape = (-1, 1) + (1,)*(ndim - 2)
         shape[0], shape[1] = shape[1], shape[0]
 
-    if sparse:
-        if copy_:
-            return [x.copy() for x in output]
-        else:
-            return output
-    else:
+    if copy_:
+        output = [x.copy() for x in output]
+
+    if not sparse and len(output) > 0:
         # Return the full N-D matrix (not only the 1-D vector)
-        if copy_:
-            mult_fact = np.ones(shape, dtype=int)
-            return [x * mult_fact for x in output]
-        else:
-            return np.broadcast_arrays(*output)
+        output = np.broadcast_arrays(*output, subok=True)
+
+    return output
 
 
 def delete(arr, obj, axis=None):

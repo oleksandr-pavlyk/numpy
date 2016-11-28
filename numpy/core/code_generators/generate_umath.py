@@ -292,7 +292,7 @@ defdict = {
 'divide':
     Ufunc(2, 1, None, # One is only a unit to the right, not the left
           docstrings.get('numpy.core.umath.divide'),
-          'PyUFunc_DivisionTypeResolver',
+          'PyUFunc_MixedDivisionTypeResolver',
           TD(intfltcmplx),
           [TypeDescription('m', FullTypeDescr, 'mq', 'm'),
            TypeDescription('m', FullTypeDescr, 'md', 'm'),
@@ -369,6 +369,12 @@ defdict = {
           TD(ints),
           TD(inexact, f='pow', astype={'e':'f'}),
           TD(O, f='npy_ObjectPower'),
+          ),
+'float_power':
+    Ufunc(2, 1, None,
+          docstrings.get('numpy.core.umath.float_power'),
+          None,
+          TD('dgDG', f='pow'),
           ),
 'absolute':
     Ufunc(1, 1, None,

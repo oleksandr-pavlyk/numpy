@@ -321,11 +321,8 @@ class TestAverage(TestCase):
         a = np.array([[1,2],[3,4]]).view(subclass)
         w = np.array([[1,2],[3,4]]).view(subclass)
 
-        with suppress_warnings() as sup:
-            # Note that the warning is spurious, because the test checks
-            # for weights while a is ignored.
-            sup.filter(FutureWarning, "np.average currently does not preserve")
-            assert_equal(type(np.average(a, weights=w)), subclass)
+        assert_equal(type(np.average(a)), subclass)
+        assert_equal(type(np.average(a, weights=w)), subclass)
 
         # also test matrices
         a = np.matrix([[1,2],[3,4]])
@@ -2211,6 +2208,7 @@ class TestMeshgrid(TestCase):
     def test_no_input(self):
         args = []
         assert_array_equal([], meshgrid(*args))
+        assert_array_equal([], meshgrid(*args, copy=False))
 
     def test_indexing(self):
         x = [1, 2, 3]
@@ -2243,6 +2241,30 @@ class TestMeshgrid(TestCase):
         # https://github.com/numpy/numpy/issues/4755
         assert_raises(TypeError, meshgrid,
                       [1, 2, 3], [4, 5, 6, 7], indices='ij')
+
+    def test_return_type(self):
+        # Test for appropriate dtype in returned arrays.
+        # Regression test for issue #5297
+        # https://github.com/numpy/numpy/issues/5297
+        x = np.arange(0, 10, dtype=np.float32)
+        y = np.arange(10, 20, dtype=np.float64)
+
+        X, Y = np.meshgrid(x,y)
+
+        assert_(X.dtype == x.dtype)
+        assert_(Y.dtype == y.dtype)
+
+        # copy
+        X, Y = np.meshgrid(x,y, copy=True)
+
+        assert_(X.dtype == x.dtype)
+        assert_(Y.dtype == y.dtype)
+
+        # sparse
+        X, Y = np.meshgrid(x,y, sparse=True)
+
+        assert_(X.dtype == x.dtype)
+        assert_(Y.dtype == y.dtype)
 
 
 class TestPiecewise(TestCase):
@@ -2299,9 +2321,19 @@ class TestPiecewise(TestCase):
         assert_(y.ndim == 0)
         assert_(y == 1)
 
+        # With 3 ranges (It was failing, before)
+        y = piecewise(x, [False, False, True], [1, 2, 3])
+        assert_array_equal(y, 3)
+
     def test_0d_comparison(self):
         x = 3
-        piecewise(x, [x <= 3, x > 3], [4, 0])  # Should succeed.
+        y = piecewise(x, [x <= 3, x > 3], [4, 0])  # Should succeed.
+        assert_equal(y, 4)
+
+        # With 3 ranges (It was failing, before)
+        x = 4
+        y = piecewise(x, [x <= 3, (x > 3) * (x <= 5), x > 5], [1, 2, 3])
+        assert_array_equal(y, 2)
 
     def test_multidimensional_extrafunc(self):
         x = np.array([[-2.5, -1.5, -0.5],
