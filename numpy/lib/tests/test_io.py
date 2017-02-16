@@ -133,13 +133,11 @@ class RoundtripTest(object):
         self.check_roundtrips(a)
 
     def test_array_object(self):
-        if sys.version_info[:2] >= (2, 7):
-            a = np.array([], object)
-            self.check_roundtrips(a)
+        a = np.array([], object)
+        self.check_roundtrips(a)
 
-            a = np.array([[1, 2], [3, 4]], object)
-            self.check_roundtrips(a)
-        # Fails with UnpicklingError: could not find MARK on Python 2.6
+        a = np.array([[1, 2], [3, 4]], object)
+        self.check_roundtrips(a)
 
     def test_1D(self):
         a = np.array([1, 2, 3, 4], int)
@@ -685,6 +683,15 @@ class TestLoadTxt(TestCase):
                        [[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]])],
                      dtype=dt)
         assert_array_equal(x, a)
+
+    def test_str_dtype(self):
+        # see gh-8033
+        c = ["str1", "str2"]
+
+        for dt in (str, np.bytes_):
+            a = np.array(["str1", "str2"], dtype=dt)
+            x = np.loadtxt(c, dtype=dt)
+            assert_array_equal(x, a)
 
     def test_empty_file(self):
         with suppress_warnings() as sup:

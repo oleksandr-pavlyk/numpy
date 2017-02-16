@@ -787,7 +787,7 @@ def polyvalfromroots(x, r, tensor=True):
 
     If `r` is of length `N`, this function returns the value
 
-    .. math:: p(x) = \prod_{n=1}^{N} (x - r_n)
+    .. math:: p(x) = \\prod_{n=1}^{N} (x - r_n)
 
     The parameter `x` is converted to an array only if it is a tuple or a
     list, otherwise it is treated as a scalar. In either case, either `x`
@@ -1161,7 +1161,7 @@ def polyvander2d(x, y, deg):
     Returns the pseudo-Vandermonde matrix of degrees `deg` and sample
     points `(x, y)`. The pseudo-Vandermonde matrix is defined by
 
-    .. math:: V[..., deg[1]*i + j] = x^i * y^j,
+    .. math:: V[..., (deg[1] + 1)*i + j] = x^i * y^j,
 
     where `0 <= i <= deg[0]` and `0 <= j <= deg[1]`. The leading indices of
     `V` index the points `(x, y)` and the last index encodes the powers of

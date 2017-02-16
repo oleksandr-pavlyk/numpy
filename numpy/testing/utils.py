@@ -82,6 +82,7 @@ def assert_(val, msg=''):
     For documentation on usage, refer to the Python documentation.
 
     """
+    __tracebackhide__ = True  # Hide traceback for py.test
     if not val:
         try:
             smsg = msg()
@@ -666,9 +667,10 @@ def assert_approx_equal(actual,desired,significant=7,err_msg='',verbose=True):
 
 
 def assert_array_compare(comparison, x, y, err_msg='', verbose=True,
-                         header='', precision=6, equal_nan=True):
+                         header='', precision=6, equal_nan=True,
+                         equal_inf=True):
     __tracebackhide__ = True  # Hide traceback for py.test
-    from numpy.core import array, isnan, isinf, any, all, inf
+    from numpy.core import array, isnan, isinf, any, inf
     x = array(x, copy=False, subok=True)
     y = array(y, copy=False, subok=True)
 
@@ -720,40 +722,41 @@ def assert_array_compare(comparison, x, y, err_msg='', verbose=True,
                                                                   y.shape),
                                 verbose=verbose, header=header,
                                 names=('x', 'y'), precision=precision)
-            if not cond:
-                raise AssertionError(msg)
+            raise AssertionError(msg)
 
         if isnumber(x) and isnumber(y):
+            has_nan = has_inf = False
             if equal_nan:
                 x_isnan, y_isnan = isnan(x), isnan(y)
                 # Validate that NaNs are in the same place
-                if any(x_isnan) or any(y_isnan):
+                has_nan = any(x_isnan) or any(y_isnan)
+                if has_nan:
                     chk_same_position(x_isnan, y_isnan, hasval='nan')
 
-            x_isinf, y_isinf = isinf(x), isinf(y)
+            if equal_inf:
+                x_isinf, y_isinf = isinf(x), isinf(y)
+                # Validate that infinite values are in the same place
+                has_inf = any(x_isinf) or any(y_isinf)
+                if has_inf:
+                    # Check +inf and -inf separately, since they are different
+                    chk_same_position(x == +inf, y == +inf, hasval='+inf')
+                    chk_same_position(x == -inf, y == -inf, hasval='-inf')
 
-            # Validate that infinite values are in the same place
-            if any(x_isinf) or any(y_isinf):
-                # Check +inf and -inf separately, since they are different
-                chk_same_position(x == +inf, y == +inf, hasval='+inf')
-                chk_same_position(x == -inf, y == -inf, hasval='-inf')
-
-            # Combine all the special values
-            x_id, y_id = x_isinf, y_isinf
-            if equal_nan:
-                x_id |= x_isnan
-                y_id |= y_isnan
+            if has_nan and has_inf:
+                x = x[~(x_isnan | x_isinf)]
+                y = y[~(y_isnan | y_isinf)]
+            elif has_nan:
+                x = x[~x_isnan]
+                y = y[~y_isnan]
+            elif has_inf:
+                x = x[~x_isinf]
+                y = y[~y_isinf]
 
             # Only do the comparison if actual values are left
-            if all(x_id):
+            if x.size == 0:
                 return
 
-            if any(x_id):
-                val = safe_comparison(x[~x_id], y[~y_id])
-            else:
-                val = safe_comparison(x, y)
-        else:
-            val = safe_comparison(x, y)
+        val = safe_comparison(x, y)
 
         if isinstance(val, bool):
             cond = val
@@ -844,6 +847,7 @@ def assert_array_equal(x, y, err_msg='', verbose=True):
     ...                            rtol=1e-10, atol=0)
 
     """
+    __tracebackhide__ = True  # Hide traceback for py.test
     assert_array_compare(operator.__eq__, x, y, err_msg=err_msg,
                          verbose=verbose, header='Arrays are not equal')
 
@@ -930,7 +934,7 @@ def assert_array_almost_equal(x, y, decimal=6, err_msg='', verbose=True):
             if npany(gisinf(x)) or npany( gisinf(y)):
                 xinfid = gisinf(x)
                 yinfid = gisinf(y)
-                if not xinfid == yinfid:
+                if not (xinfid == yinfid).all():
                     return False
                 # if one item, x and y is +- inf
                 if x.size == y.size == 1:
@@ -1025,7 +1029,8 @@ def assert_array_less(x, y, err_msg='', verbose=True):
     __tracebackhide__ = True  # Hide traceback for py.test
     assert_array_compare(operator.__lt__, x, y, err_msg=err_msg,
                          verbose=verbose,
-                         header='Arrays are not less-ordered')
+                         header='Arrays are not less-ordered',
+                         equal_inf=False)
 
 
 def runstring(astr, dict):
@@ -2048,7 +2053,7 @@ class suppress_warnings(object):
                 warnings.filterwarnings(
                     "always", category=category, message=message)
             else:
-                module_regex = module.__name__.replace('.', '\.') + '$'
+                module_regex = module.__name__.replace('.', r'\.') + '$'
                 warnings.filterwarnings(
                     "always", category=category, message=message,
                     module=module_regex)
@@ -2121,8 +2126,6 @@ class suppress_warnings(object):
             raise RuntimeError("cannot enter suppress_warnings twice.")
 
         self._orig_show = warnings.showwarning
-        if hasattr(warnings, "_showwarnmsg"):
-            self._orig_showmsg = warnings._showwarnmsg
         self._filters = warnings.filters
         warnings.filters = self._filters[:]
 
@@ -2140,31 +2143,23 @@ class suppress_warnings(object):
                 warnings.filterwarnings(
                     "always", category=cat, message=mess)
             else:
-                module_regex = mod.__name__.replace('.', '\.') + '$'
+                module_regex = mod.__name__.replace('.', r'\.') + '$'
                 warnings.filterwarnings(
                     "always", category=cat, message=mess,
                     module=module_regex)
                 self._tmp_modules.add(mod)
         warnings.showwarning = self._showwarning
-        if hasattr(warnings, "_showwarnmsg"):
-            warnings._showwarnmsg = self._showwarnmsg
         self._clear_registries()
 
         return self
 
     def __exit__(self, *exc_info):
         warnings.showwarning = self._orig_show
-        if hasattr(warnings, "_showwarnmsg"):
-            warnings._showwarnmsg = self._orig_showmsg
         warnings.filters = self._filters
         self._clear_registries()
         self._entered = False
         del self._orig_show
         del self._filters
-
-    def _showwarnmsg(self, msg):
-        self._showwarning(msg.message, msg.category, msg.filename, msg.lineno,
-                          msg.file, msg.line, use_warnmsg=msg)
 
     def _showwarning(self, message, category, filename, lineno,
                      *args, **kwargs):

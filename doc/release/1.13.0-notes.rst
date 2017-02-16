@@ -56,6 +56,26 @@ See Changes section for more detail.
 * ``array == None`` and ``array != None`` do element-wise comparison.
 * ``np.equal, np.not_equal``, object identity doesn't override comparison result.
 
+dtypes are now always true
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Previously ``bool(dtype)`` would fall back to the default python
+implementation, which checked if ``len(dtype) > 0``. Since ``dtype`` objects
+implement ``__len__`` as the number of record fields, ``bool`` of scalar dtypes
+would evaluate to ``False``, which was unintuitive. Now ``bool(dtype) == True``
+for all dtypes.
+
+``__getslice__`` and ``__setslice__`` have been removed from ``ndarray``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When subclassing np.ndarray in Python 2.7, it is no longer _necessary_ to
+implement ``__*slice__`` on the derived class, as ``__*item__`` will intercept
+these calls correctly.
+
+Any code that did implement these will work exactly as before, with the
+obvious exception of any code that tries to directly call
+``ndarray.__getslice__`` (e.g. through ``super(...).__getslice__``). In
+this case, ``.__getitem__(slice(start, end))`` will act as a replacement.
+
 
 C API
 ~~~~~
@@ -73,6 +93,51 @@ behaviour is recovered if ``axis=None`` (default).
 
 Improvements
 ============
+
+Partial support for 64-bit f2py extensions with MinGW
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Extensions that incorporate Fortran libraries can now be built using the free
+MinGW_ toolset, also under Python 3.5. This works best for extensions that only
+do calculations and uses the runtime modestly (reading and writing from files,
+for instance). Note that this does not remove the need for Mingwpy; if you make
+extensive use of the runtime, you will most likely run into issues_. Instead,
+it should be regarded as a band-aid until Mingwpy is fully functional.
+
+Extensions can also be compiled using the MinGW toolset using the runtime
+library from the (moveable) WinPython 3.4 distribution, which can be useful for
+programs with a PySide1/Qt4 front-end.
+
+.. _MinGW: https://sf.net/projects/mingw-w64/files/Toolchains%20targetting%20Win64/Personal%20Builds/mingw-builds/6.2.0/threads-win32/seh/
+
+.. _issues: https://mingwpy.github.io/issues.html
+
+Performance improvements for ``packbits`` and ``unpackbits``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The functions ``numpy.packbits`` with boolean input and ``numpy.unpackbits`` have
+been optimized to be a significantly faster for contiguous data.
+
+Fix for PPC long double floating point information
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In previous versions of numpy, the ``finfo`` function returned invalid
+information about the `double double`_ format of the ``longdouble`` float type
+on Power PC (PPC).  The invalid values resulted from the failure of the numpy
+algorithm to deal with the `variable number of digits in the significand
+<https://www.ibm.com/support/knowledgecenter/en/ssw_aix_71/com.ibm.aix.genprogc/128bit_long_double_floating-point_datatype.htm>`_
+that are a feature of PPC long doubles.  This release by-passes the failing
+algorithm by using heuristics to detect the presence of the PPC double double
+format.  A side-effect of using these heuristics is that the ``finfo``
+function is faster than previous releases.
+
+.. _issues: https://github.com/numpy/numpy/issues/2669
+
+.. _double double: https://en.wikipedia.org/wiki/Quadruple-precision_floating-point_format#Double-double_arithmetic
+
+Support for returning arrays of arbitrary dimensionality in `apply_along_axis`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Previously, only scalars or 1D arrays could be returned by the function passed
+to `apply_along_axis`. Now, it can return an array of any dimensionality
+(including 0D), and the shape of this array replaces the axis of the array
+being iterated over.
 
 
 Changes
@@ -112,3 +177,29 @@ Boolean indexing changes
 * Boolean indexing into scalar arrays return a new 1-d array.  This means that
   ``array(1)[array(True)]`` gives ``array([1])`` and not the original array.
 
+``np.random.multivariate_normal`` behavior with bad covariance matrix
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It is now possible to adjust the behavior the function will have when dealing
+with the covariance matrix by using two new keyword arguments:
+
+* ``tol`` can be used to specify a tolerance to use when checking that
+  the covariance matrix is positive semidefinite.
+
+* ``check_valid`` can be used to configure what the function will do in the
+  presence of a matrix that is not positive semidefinite. Valid options are
+  ``ignore``, ``warn`` and ``raise``. The default value, ``warn`` keeps the
+  the behavior used on previous releases.
+
+``assert_array_less`` compares ``np.inf`` and ``-np.inf`` now
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Previously, ``np.testing.assert_array_less`` ignored all infinite values. This
+is not the expected behavior both according to documentation and intuitively.
+Now, -inf < x < inf is considered ``True`` for any real number x and all
+other cases fail.
+
+``offset`` attribute value in ``memmap`` objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The ``offset`` attribute in a ``memmap`` object is now set to the
+offset into the file. This is a behaviour change only for offsets
+greater than ``mmap.ALLOCATIONGRANULARITY``.
